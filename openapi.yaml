@@ -1,0 +1,634 @@
+openapi: 3.0.0
+info:
+  version: 0.0.1
+  title: Knowledge Graph API
+  description: The API documentation for the knowledge graph service.
+servers:
+  - url: http://localhost:3000/api
+    description: Development Server
+components:
+  schemas:
+    Card:
+      type: object
+      required: [title, subtitle, picture, type]
+      properties:
+        title:
+          type: string
+          description: Primary heading of the card.
+          example: "Sample Resource Title"
+        subtitle:
+          type: string
+          description: Secondary descriptive line.
+          example: "Brief description or subtitle of the item"
+        picture:
+          type: string
+          format: uri
+          description: URL to a thumbnail or illustrative image.
+          example: "https://example.org/images/sample-thumbnail.jpg"
+        type:
+          type: string
+          description: Domain/type classification of the card.
+          example: "CreativeWork"
+        score:
+          type: number
+          format: float
+          description: Relevance score (optional).
+          example: 0.95
+        reference:
+          type: string
+          format: uri
+          description: Knowledge graph IRI or canonical resource identifier.
+          example: "http://example.org/resource/item-001"
+        snippet:
+          type: string
+          description: Short textual snippet or highlight.
+          example: "This is a key highlight or excerpt related to the resource."
+        extra:
+          type: object
+          additionalProperties: true
+          description: Arbitrary additional metadata.
+          example:
+            creationDate: "2024-01-01"
+            status: "active"
+    CardsResponse:
+      type: object
+      properties:
+        session-id:
+          type: string
+          description: Echo of the session identifier supplied in the request.
+        cards:
+          type: array
+          minItems: 0
+          items:
+            $ref: '#/components/schemas/Card'
+      required: [session-id, cards]
+
+paths:
+  /v1/ids:
+    get:
+      summary: Get all named graph IDs
+      description: |
+        Retrieves all named graph identifiers from the triple store.
+      operationId: getAllIDs
+      tags:
+        - Administration
+      responses:
+        '200':
+          description: Successfully retrieved list of all graph IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ids:
+                    type: array
+                    items:
+                      type: string
+                      format: uri
+                    description: List of named graph IRIs available in the triple store
+              example:
+                ids:
+                  - "http://example.org/resource/graph-001"
+                  - "http://example.org/resource/graph-002"
+                  - "http://example.org/resource/dataset-alpha"
+                  - "http://example.org/resource/dataset-beta"
+  
+  /v1/load_all:
+    post:
+      summary: Load all named graphs from RDF files
+      description: |
+        Loads all Turtle (.ttl) RDF files from the data/rdf directory into the triple store.
+        This endpoint scans the local directory, parses each .ttl file, stores/updates
+        the graphs in the database, and indexes them in Solr.
+      operationId: loadAllNamedGraphs
+      tags:
+        - Administration
+      security:
+        - BasicAuth: []
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Successfully loaded all RDF graphs
+  
+  /fetch_profiles:
+    get:
+      summary: Fetch SHACL profiles
+      description: |
+        Downloads SHACL (Shapes Constraint Language) profiles from the configured remote source and saves them to the local data/shacl directory.
+        SHACL profiles are used for validating RDF data.
+      operationId: fetchProfiles
+      tags:
+        - Administration
+      responses:
+        '200':
+          description: Successfully fetched and loaded SHACL profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 
+                      message: "loaded profiles"
+
+  /v1/delete_all:
+    post:
+      summary: Delete all named graphs
+      description: Removes all graphs from the triple store and clears the index.
+      operationId: deleteAllGraphs
+      tags:
+        - Administration
+      responses:
+        '200':
+          description: All graphs deleted successfully
+  
+  /v1/config:
+    get:
+      summary: Get Solr configuration
+      description: Retrieves the current Solr configuration settings.
+      operationId: getConfig
+      tags:
+        - Configuration
+      responses:
+        '200':
+          description: Successfully retrieved Solr configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  index:
+                    type: string
+                    example: "generic-index"
+                  crud:
+                    type: boolean
+                    example: true
+                  header:
+                    type: string
+                    example: ""
+                  rdfNamespace:
+                    type: string
+                    example: "http://example.org/"
+                  solrRegex:
+                    type: string
+                    example: "[\\/*?\"<>|#:.\\- ]"
+                  solrRegexReplacement:
+                    type: string
+                    example: "_"
+                  solrMaxAggregations:
+                    type: integer
+                    example: 1000
+                  geoDataType:
+                    type: string
+                    example: "http://www.opengis.net/ont/geosparql#wktLiteral"
+                  shapes:
+                    type: string
+                    example: "<https://example.org/resource/1234> <https://schema.org/relation> <https://example.org/resource/5678> ..."
+                  rootShapes:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - "https://example.org/shapes/main-profile"
+                      - "https://example.org/shapes/secondary-profile"
+
+  /v1/resource/{resource_id}:
+    get:
+      summary: Get RDF resource by ID
+      description: Retrieves a specific RDF resource in Turtle format from the triple store.
+      operationId: getResource
+      tags:
+        - Resources
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          description: The unique identifier (URI) of the RDF resource to retrieve.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resource retrieved successfully
+          content:
+            application/x-turtle:
+              schema:
+                type: string
+                description: Turtle-formatted RDF data of the requested resource
+              example: |
+                @prefix dcterms: <http://purl.org/dc/terms/> .
+                @prefix ns1: <http://schema.org/> .
+                @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+                <http://example.org/resource/sample-item-01> a ns1:Thing ;
+                    dcterms:conformsTo <https://example.org/profiles/generic-profile> ;
+                    ns1:name "Sample Resource Name"@en ;
+                    ns1:description "A generic description of the resource."@en ;
+                    ns1:identifier "ID-12345" ;
+                    ns1:dateCreated "2024-01-01"^^xsd:date .
+
+    delete:
+      summary: Delete resource by ID
+      description: Removes a specific RDF resource from the triple store.
+      operationId: deleteResource
+      tags:
+        - Resources
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          description: Resource ID to be deleted.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resource deleted successfully
+  
+  /v1/resource:
+    post:
+      summary: Add new RDF resource
+      description: Adds a new RDF graph to the triple store.
+      operationId: addResource
+      tags:
+        - Resources
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                ttl:
+                  type: string
+                  description: Turtle format RDF data.
+              required:
+                - ttl
+            example:
+              ttl: "<http://example.org/newResource> a <http://example.org/Type> ."
+      responses:
+        '201':
+          description: Resource created successfully
+          content:
+            application/json:
+              example:
+                message: "new graph <http://example.org/newResource> added"
+
+  /v1/upload:
+    get:
+      summary: Get all uploaded RDF files
+      description: |
+        Retrieves a list of all RDF files that have been uploaded to the system.
+        Returns metadata about each uploaded RDF file including graph information.
+      operationId: getUploadedFiles
+      tags:
+        - File Management
+      security:
+        - BasicAuth: []
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved list of uploaded RDF files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    description: List of uploaded RDF files with metadata
+                    items:
+                      type: object
+                      properties:
+                        filename:
+                          type: string
+                          description: Name of the uploaded file.
+                        graph:
+                          type: string
+                          description: Graph IRI associated with the file.
+                        size:
+                          type: integer
+                          description: Size of the file in bytes.
+                example:
+                  files:
+                    - filename: "data-import-01.ttl"
+                      graph: "http://example.org/resource/import-01"
+                      size: 1024
+                    - filename: "data-import-02.ttl"
+                      graph: "http://example.org/resource/import-02"
+                      size: 2048
+
+    post:
+      summary: Upload RDF file
+      description: |
+        Uploads a new RDF file to the system. The file will be parsed, stored in the triple store,
+        and indexed for search. Supports Turtle (.ttl) format RDF files.
+      operationId: uploadRdfFile
+      tags:
+        - File Management
+      security:
+        - BasicAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - graph_file
+              properties:
+                graph_file:
+                  type: string
+                  format: binary
+                  description: RDF file in Turtle format (.ttl).
+              example:
+                graph_file: "upload.ttl"
+      responses:
+        '201':
+          description: RDF file successfully uploaded and processed
+  
+  /v1/generate:
+    get:
+      summary: Generate answer using RAG
+      description: |
+        Generates answers using Retrieval Augmented Generation (RAG). 
+        Provide a query string and receive a generated answer along with context.
+      operationId: generateAnswer
+      tags:
+        - AI
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Query string for the RAG system.
+          schema:
+            type: string
+          example: "What is the status of the project?"
+        - name: session-id
+          in: query
+          required: true
+          description: Identifier for the user session.
+          schema:
+            type: string
+          example: abc123-session-token
+      responses:
+        '200':
+          description: Answer generated successfully
+          content:
+            application/json:
+              example:
+                generate: "The project is currently in the development phase."
+                session-id: "abc123-session-token"
+                context: [
+                  "http://example.org/resource/project-status",
+                  "http://example.org/resource/timeline"
+                ]
+
+  /v1/generate_stream:
+    get:
+      summary: Stream generated answers using RAG
+      description: |
+        Generates answers using Retrieval Augmented Generation (RAG) with real-time streaming.
+        This endpoint provides a streaming response that returns chunks of text as they are generated.
+      operationId: generateStream
+      tags:
+        - AI
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: The query or prompt for which to generate an answer.
+          schema:
+            type: string
+          example: abc123-session-token
+      responses:
+        '200':
+          description: Successfully started streaming generated response
+          content:
+            application/json:
+              example:
+                summary: "### Summary of Query\n\nThis is a generated response based on the knowledge graph data..."
+                references:
+                  - "[KG] http://example.org/resource/reference-1"
+                  - "[KG] http://example.org/resource/reference-2"
+
+  /v1/cards:
+    get:
+      summary: Get cards for a query
+      description: |
+        Retrieves a set of "cards" or summarized information snippets relevant to the provided query.
+      operationId: generateCards
+      tags:
+        - AI
+      parameters:
+        - name: session-id
+          in: query
+          required: true
+          description: Identifier for the user session.
+          schema:
+            type: string
+          example: abc123-session-token
+      responses:
+        '200':
+          description: Cards generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardsResponse'
+              examples:
+                sample:
+                  summary: Two sample cards
+                  value:
+                    session-id: "abc123-session-token"
+                    cards:
+                      - title: "Sample Item Alpha"
+                        subtitle: "A description of the first item"
+                        picture: "https://example.org/images/alpha.jpg"
+                        type: "Category A"
+                        score: 0.95
+                        reference: "http://example.org/resource/alpha"
+                        snippet: "This is a key detail about Item Alpha."
+                        extra:
+                          created: "2023-01-01"
+                      - title: "Sample Item Beta"
+                        subtitle: "A description of the second item"
+                        picture: "https://example.org/images/beta.jpg"
+                        type: "Category B"
+                        score: 0.88
+                        reference: "http://example.org/resource/beta"
+                        snippet: "This is a key detail about Item Beta."
+                        extra:
+                          status: "archived"
+
+  /v1/solr/{collection}/{action}:
+    parameters:
+      - name: collection
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Solr collection name.
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Solr API endpoint.
+
+    get:
+      summary: Proxy GET request to Solr API
+      description: |
+        Forwards GET requests to Solr with query parameters.
+        Supports standard Solr query parameters and returns the Solr response directly.
+      operationId: solrProxyGet
+      tags:
+        - Solr
+      responses:
+        '200':
+          description: Successfully retrieved data from Solr
+          content:
+            application/json:
+              example:
+                responseHeader:
+                  zkConnected: true
+                  status: 0
+                  QTime: 5
+                  params:
+                    q: "*:*"
+                    wt: "json"
+                response:
+                  numFound: 2
+                  start: 0
+                  numFoundExact: true
+                  docs:
+                    - id: "http%3A//example.org/resource/doc-1"
+                      _rdf: "@prefix ns1: <http://schema.org/> .\n\n<http://example.org/resource/doc-1> a ns1:Thing ; ns1:name \"Document 1\" ."
+                      _shape: "https://example.org/profiles/shape-1"
+                      _version_: 1800000000000000000
+                      _root_: "http%3A//example.org/resource/doc-1"
+                    - id: "http%3A//example.org/resource/doc-2"
+                      _rdf: "@prefix ns1: <http://schema.org/> .\n\n<http://example.org/resource/doc-2> a ns1:Thing ; ns1:name \"Document 2\" ."
+                      _shape: "https://example.org/profiles/shape-2"
+                      _version_: 1800000000000000001
+                      _root_: "http%3A//example.org/resource/doc-2"
+
+    post:
+      summary: Proxy POST to Solr API
+      description: |
+        Forwards POST requests to Solr. Used for updates or committing changes.
+        Example: {{baseUrl}}/api/v1/solr/rdf/update?commit=true
+      operationId: solrProxyPost
+      tags:
+        - Solr
+      parameters:
+        - name: collection
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solr collection name.
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Solr API endpoint.
+        - name: commit
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: If true, commits changes after the update.
+      responses:
+        '200':
+          description: Successful Solr response
+          content:
+            application/json:
+              example:
+                responseHeader:
+                  status: 0
+                  QTime: 4
+
+  /v1/sparql/query:
+    get:
+      summary: Execute SPARQL query (GET)
+      description: |
+        Proxies SPARQL SELECT and ASK queries to the triple store using HTTP GET.
+        This endpoint forwards the query parameters and returns the results.
+      operationId: executeSparqlGet
+      tags:
+        - SPARQL
+      security:
+        - BasicAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: |
+            SPARQL query string. Must be URL-encoded.
+            Example query used for this response:  
+            `SELECT * WHERE { ?s ?p ?o } LIMIT 1`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful SPARQL query execution
+          content:
+            application/json:
+              example:
+                head:
+                  vars: [ "s", "p", "o" ]
+                results:
+                  bindings:
+                    - s:
+                        type: "uri"
+                        value: "http://example.org/resource-1"
+                      p:
+                        type: "uri"
+                        value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+                      o:
+                        type: "uri"
+                        value: "http://example.org/TypeClass"
+
+    post:
+      summary: Execute SPARQL query (POST)
+      description: |
+        Proxies SPARQL queries to the triple store using HTTP POST.
+        This method is recommended for complex queries, updates, and large result sets.
+      operationId: executeSparqlPost
+      tags:
+        - SPARQL
+      security:
+        - BasicAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: SPARQL query string.
+                  example: SELECT * WHERE { ?s ?p ?o } LIMIT 1
+      responses:
+        '200':
+          description: Successful SPARQL query execution
+          content:
+            application/json:
+              example:
+                head:
+                  vars: ["s", "p", "o"]
+                results:
+                  bindings:
+                    - s: { type: "uri", value: "http://example.org/resource-1" }
+                      p: { type: "uri", value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }
+                      o: { type: "uri", value: "http://example.org/TypeClass" }
+
+security:
+  - BasicAuth: []
+  - SessionAuth: []

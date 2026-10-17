@@ -1,4 +1,4 @@
-# Knowledge Graph API — OpenAPI specification
+# Knowledge Graph API
 
 **[→ Browse the reference](https://asadhky.github.io/BackendAPIDoc/)**
 
@@ -53,19 +53,6 @@ npx @redocly/cli lint openapi.yaml
 The spec validates with no errors. One warning remains — `no-server-example.com`, which
 flags the `localhost` development server and is expected here.
 
-## Design notes
-
-A few choices worth calling out, since the point of the repo is the documentation itself:
-
-- **Errors are first-class.** A shared `Error` schema is referenced from reusable
-  `400`/`401`/`404`/`500` responses in `components.responses`, so every operation documents
-  its failure modes rather than just the happy path.
-- **Responses are named schemas**, not inline objects, so the spec generates usable client
-  models.
-- **Both auth schemes are declared and applied globally** — `BasicAuth` (HTTP Basic) and
-  `SessionAuth` (a session cookie established when a session is created).
-- **The streaming endpoint is documented as `text/event-stream`** with its event sequence
-  spelled out, rather than being described as JSON.
 
 ## Layout
 

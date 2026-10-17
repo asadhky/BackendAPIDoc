@@ -2,12 +2,205 @@ openapi: 3.0.0
 info:
   version: 0.0.1
   title: Knowledge Graph API
-  description: The API documentation for the knowledge graph service.
+  description: |
+    The API documentation for the knowledge graph service: a backend that stores RDF
+    graphs in a triple store, indexes them in Solr, and answers natural-language
+    questions over them using Retrieval Augmented Generation (RAG).
+
+    This is a **sanitized** specification. Hostnames, identifiers and payloads have been
+    replaced with `example.org` placeholders; no internal servers or data are exposed.
+  contact:
+    name: Repository
+    url: https://github.com/asadhky/BackendAPIDoc
+
 servers:
   - url: http://localhost:3000/api
-    description: Development Server
+    description: Local development server
+  - url: "{protocol}://{host}/api"
+    description: Deployed instance
+    variables:
+      protocol:
+        default: https
+        enum: [https, http]
+      host:
+        default: localhost:3000
+        description: Host and port of the deployment.
+
+tags:
+  - name: Administration
+    description: Bulk loading, deletion and profile management for the triple store.
+  - name: Configuration
+    description: Read the service's current Solr configuration.
+  - name: Resources
+    description: Create, read and delete individual RDF resources.
+  - name: File Management
+    description: Upload RDF files and list what has been uploaded.
+  - name: AI
+    description: Retrieval Augmented Generation endpoints — answers, streaming answers and cards.
+  - name: Solr
+    description: Pass-through proxy to the underlying Solr API.
+  - name: SPARQL
+    description: Pass-through proxy for SPARQL queries against the triple store.
+
+security:
+  - BasicAuth: []
+  - SessionAuth: []
+
 components:
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: HTTP Basic authentication.
+    # TODO: confirm the transport for SessionAuth against the implementation.
+    # Documented here as a session cookie; adjust `in` and `name` if the session
+    # identifier is sent as a header or query parameter instead.
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: session-id
+      description: Session identifier established when a session is created.
+
   schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Short, machine-readable error identifier.
+          example: "Bad Request"
+        message:
+          type: string
+          description: Human-readable explanation of what went wrong.
+          example: "Required parameter 'query' is missing."
+        status:
+          type: integer
+          description: HTTP status code.
+          example: 400
+
+    Message:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: Human-readable result of the operation.
+          example: "loaded profiles"
+
+    GraphIds:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          description: List of named graph IRIs available in the triple store.
+          items:
+            type: string
+            format: uri
+      example:
+        ids:
+          - "http://example.org/resource/graph-001"
+          - "http://example.org/resource/graph-002"
+          - "http://example.org/resource/dataset-alpha"
+          - "http://example.org/resource/dataset-beta"
+
+    SolrConfig:
+      type: object
+      description: The service's effective Solr configuration.
+      properties:
+        index:
+          type: string
+          example: "generic-index"
+        crud:
+          type: boolean
+          example: true
+        header:
+          type: string
+          example: ""
+        rdfNamespace:
+          type: string
+          example: "http://example.org/"
+        solrRegex:
+          type: string
+          example: "[\\/*?\"<>|#:.\\- ]"
+        solrRegexReplacement:
+          type: string
+          example: "_"
+        solrMaxAggregations:
+          type: integer
+          example: 1000
+        geoDataType:
+          type: string
+          example: "http://www.opengis.net/ont/geosparql#wktLiteral"
+        shapes:
+          type: string
+          example: "<https://example.org/resource/1234> <https://schema.org/relation> <https://example.org/resource/5678> ..."
+        rootShapes:
+          type: array
+          items:
+            type: string
+          example:
+            - "https://example.org/shapes/main-profile"
+            - "https://example.org/shapes/secondary-profile"
+
+    UploadedFile:
+      type: object
+      properties:
+        filename:
+          type: string
+          description: Name of the uploaded file.
+          example: "data-import-01.ttl"
+        graph:
+          type: string
+          description: Graph IRI associated with the file.
+          example: "http://example.org/resource/import-01"
+        size:
+          type: integer
+          description: Size of the file in bytes.
+          example: 1024
+
+    UploadedFiles:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          description: List of uploaded RDF files with metadata.
+          items:
+            $ref: '#/components/schemas/UploadedFile'
+      example:
+        files:
+          - filename: "data-import-01.ttl"
+            graph: "http://example.org/resource/import-01"
+            size: 1024
+          - filename: "data-import-02.ttl"
+            graph: "http://example.org/resource/import-02"
+            size: 2048
+
+    GenerateResponse:
+      type: object
+      required: [generate, session-id]
+      properties:
+        generate:
+          type: string
+          description: The generated answer.
+        session-id:
+          type: string
+          description: Echo of the session identifier supplied in the request.
+        context:
+          type: array
+          description: IRIs of the resources the answer was grounded in.
+          items:
+            type: string
+            format: uri
+      example:
+        generate: "The project is currently in the development phase."
+        session-id: "abc123-session-token"
+        context:
+          - "http://example.org/resource/project-status"
+          - "http://example.org/resource/timeline"
+
     Card:
       type: object
       required: [title, subtitle, picture, type]
@@ -50,8 +243,10 @@ components:
           example:
             creationDate: "2024-01-01"
             status: "active"
+
     CardsResponse:
       type: object
+      required: [session-id, cards]
       properties:
         session-id:
           type: string
@@ -61,7 +256,48 @@ components:
           minItems: 0
           items:
             $ref: '#/components/schemas/Card'
-      required: [session-id, cards]
+
+  responses:
+    BadRequest:
+      description: The request was malformed, or a required parameter was missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Bad Request"
+            message: "Required parameter 'query' is missing."
+            status: 400
+    Unauthorized:
+      description: Authentication is required, or the supplied credentials were rejected.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Unauthorized"
+            message: "Valid credentials or an active session are required."
+            status: 401
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Not Found"
+            message: "No resource with the given identifier was found."
+            status: 404
+    ServerError:
+      description: The service failed while handling the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Internal Server Error"
+            message: "The triple store could not be reached."
+            status: 500
 
 paths:
   /v1/ids:
@@ -78,21 +314,12 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ids:
-                    type: array
-                    items:
-                      type: string
-                      format: uri
-                    description: List of named graph IRIs available in the triple store
-              example:
-                ids:
-                  - "http://example.org/resource/graph-001"
-                  - "http://example.org/resource/graph-002"
-                  - "http://example.org/resource/dataset-alpha"
-                  - "http://example.org/resource/dataset-beta"
-  
+                $ref: '#/components/schemas/GraphIds'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /v1/load_all:
     post:
       summary: Load all named graphs from RDF files
@@ -103,13 +330,20 @@ paths:
       operationId: loadAllNamedGraphs
       tags:
         - Administration
-      security:
-        - BasicAuth: []
-        - SessionAuth: []
       responses:
         '200':
           description: Successfully loaded all RDF graphs
-  
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+              example:
+                message: "loaded 12 graphs"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /fetch_profiles:
     get:
       summary: Fetch SHACL profiles
@@ -125,12 +359,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: 
-                      message: "loaded profiles"
+                $ref: '#/components/schemas/Message'
+              example:
+                message: "loaded profiles"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/delete_all:
     post:
@@ -142,7 +377,17 @@ paths:
       responses:
         '200':
           description: All graphs deleted successfully
-  
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+              example:
+                message: "all graphs deleted"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /v1/config:
     get:
       summary: Get Solr configuration
@@ -156,42 +401,11 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  index:
-                    type: string
-                    example: "generic-index"
-                  crud:
-                    type: boolean
-                    example: true
-                  header:
-                    type: string
-                    example: ""
-                  rdfNamespace:
-                    type: string
-                    example: "http://example.org/"
-                  solrRegex:
-                    type: string
-                    example: "[\\/*?\"<>|#:.\\- ]"
-                  solrRegexReplacement:
-                    type: string
-                    example: "_"
-                  solrMaxAggregations:
-                    type: integer
-                    example: 1000
-                  geoDataType:
-                    type: string
-                    example: "http://www.opengis.net/ont/geosparql#wktLiteral"
-                  shapes:
-                    type: string
-                    example: "<https://example.org/resource/1234> <https://schema.org/relation> <https://example.org/resource/5678> ..."
-                  rootShapes:
-                    type: array
-                    items:
-                      type: string
-                    example:
-                      - "https://example.org/shapes/main-profile"
-                      - "https://example.org/shapes/secondary-profile"
+                $ref: '#/components/schemas/SolrConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/resource/{resource_id}:
     get:
@@ -207,6 +421,7 @@ paths:
           description: The unique identifier (URI) of the RDF resource to retrieve.
           schema:
             type: string
+          example: "http://example.org/resource/sample-item-01"
       responses:
         '200':
           description: Resource retrieved successfully
@@ -226,6 +441,12 @@ paths:
                     ns1:description "A generic description of the resource."@en ;
                     ns1:identifier "ID-12345" ;
                     ns1:dateCreated "2024-01-01"^^xsd:date .
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
     delete:
       summary: Delete resource by ID
@@ -240,10 +461,23 @@ paths:
           description: Resource ID to be deleted.
           schema:
             type: string
+          example: "http://example.org/resource/sample-item-01"
       responses:
         '200':
           description: Resource deleted successfully
-  
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+              example:
+                message: "graph <http://example.org/resource/sample-item-01> deleted"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /v1/resource:
     post:
       summary: Add new RDF resource
@@ -253,16 +487,17 @@ paths:
         - Resources
       requestBody:
         required: true
+        description: The Turtle-serialised RDF graph to store.
         content:
           application/x-www-form-urlencoded:
             schema:
               type: object
+              required:
+                - ttl
               properties:
                 ttl:
                   type: string
                   description: Turtle format RDF data.
-              required:
-                - ttl
             example:
               ttl: "<http://example.org/newResource> a <http://example.org/Type> ."
       responses:
@@ -270,8 +505,16 @@ paths:
           description: Resource created successfully
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
               example:
                 message: "new graph <http://example.org/newResource> added"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/upload:
     get:
@@ -282,40 +525,17 @@ paths:
       operationId: getUploadedFiles
       tags:
         - File Management
-      security:
-        - BasicAuth: []
-        - SessionAuth: []
       responses:
         '200':
           description: Successfully retrieved list of uploaded RDF files
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  files:
-                    type: array
-                    description: List of uploaded RDF files with metadata
-                    items:
-                      type: object
-                      properties:
-                        filename:
-                          type: string
-                          description: Name of the uploaded file.
-                        graph:
-                          type: string
-                          description: Graph IRI associated with the file.
-                        size:
-                          type: integer
-                          description: Size of the file in bytes.
-                example:
-                  files:
-                    - filename: "data-import-01.ttl"
-                      graph: "http://example.org/resource/import-01"
-                      size: 1024
-                    - filename: "data-import-02.ttl"
-                      graph: "http://example.org/resource/import-02"
-                      size: 2048
+                $ref: '#/components/schemas/UploadedFiles'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
     post:
       summary: Upload RDF file
@@ -325,11 +545,9 @@ paths:
       operationId: uploadRdfFile
       tags:
         - File Management
-      security:
-        - BasicAuth: []
-        - SessionAuth: []
       requestBody:
         required: true
+        description: Multipart form containing the Turtle file to upload.
         content:
           multipart/form-data:
             schema:
@@ -341,17 +559,27 @@ paths:
                   type: string
                   format: binary
                   description: RDF file in Turtle format (.ttl).
-              example:
-                graph_file: "upload.ttl"
       responses:
         '201':
           description: RDF file successfully uploaded and processed
-  
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+              example:
+                message: "upload.ttl uploaded and indexed"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /v1/generate:
     get:
       summary: Generate answer using RAG
       description: |
-        Generates answers using Retrieval Augmented Generation (RAG). 
+        Generates answers using Retrieval Augmented Generation (RAG).
         Provide a query string and receive a generated answer along with context.
       operationId: generateAnswer
       tags:
@@ -370,19 +598,20 @@ paths:
           description: Identifier for the user session.
           schema:
             type: string
-          example: abc123-session-token
+          example: "abc123-session-token"
       responses:
         '200':
           description: Answer generated successfully
           content:
             application/json:
-              example:
-                generate: "The project is currently in the development phase."
-                session-id: "abc123-session-token"
-                context: [
-                  "http://example.org/resource/project-status",
-                  "http://example.org/resource/timeline"
-                ]
+              schema:
+                $ref: '#/components/schemas/GenerateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/generate_stream:
     get:
@@ -400,17 +629,34 @@ paths:
           description: The query or prompt for which to generate an answer.
           schema:
             type: string
-          example: abc123-session-token
+          example: "Summarise what the knowledge graph says about the project."
       responses:
         '200':
           description: Successfully started streaming generated response
           content:
             application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                    description: The generated text, delivered in chunks as it is produced.
+                  references:
+                    type: array
+                    description: IRIs of the resources the answer draws on.
+                    items:
+                      type: string
               example:
                 summary: "### Summary of Query\n\nThis is a generated response based on the knowledge graph data..."
                 references:
                   - "[KG] http://example.org/resource/reference-1"
                   - "[KG] http://example.org/resource/reference-2"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/cards:
     get:
@@ -427,7 +673,7 @@ paths:
           description: Identifier for the user session.
           schema:
             type: string
-          example: abc123-session-token
+          example: "abc123-session-token"
       responses:
         '200':
           description: Cards generated successfully
@@ -459,21 +705,29 @@ paths:
                         snippet: "This is a key detail about Item Beta."
                         extra:
                           status: "archived"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/solr/{collection}/{action}:
     parameters:
       - name: collection
         in: path
         required: true
+        description: Solr collection name.
         schema:
           type: string
-        description: Solr collection name.
+        example: "rdf"
       - name: action
         in: path
         required: true
+        description: Solr API endpoint.
         schema:
           type: string
-        description: Solr API endpoint.
+        example: "select"
 
     get:
       summary: Proxy GET request to Solr API
@@ -488,6 +742,10 @@ paths:
           description: Successfully retrieved data from Solr
           content:
             application/json:
+              schema:
+                type: object
+                description: The Solr response, forwarded unchanged.
+                additionalProperties: true
               example:
                 responseHeader:
                   zkConnected: true
@@ -511,43 +769,52 @@ paths:
                       _shape: "https://example.org/profiles/shape-2"
                       _version_: 1800000000000000001
                       _root_: "http%3A//example.org/resource/doc-2"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
     post:
       summary: Proxy POST to Solr API
       description: |
-        Forwards POST requests to Solr. Used for updates or committing changes.
-        Example: {{baseUrl}}/api/v1/solr/rdf/update?commit=true
+        Forwards POST requests to Solr. Used for updates or committing changes,
+        for example `POST /api/v1/solr/rdf/update?commit=true`.
       operationId: solrProxyPost
       tags:
         - Solr
       parameters:
-        - name: collection
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Solr collection name.
-        - name: action
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Solr API endpoint.
         - name: commit
           in: query
           required: false
+          description: If true, commits changes after the update.
           schema:
             type: boolean
-          description: If true, commits changes after the update.
+          example: true
       responses:
         '200':
           description: Successful Solr response
           content:
             application/json:
+              schema:
+                type: object
+                description: The Solr response, forwarded unchanged.
+                additionalProperties: true
               example:
                 responseHeader:
                   status: 0
                   QTime: 4
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
   /v1/sparql/query:
     get:
@@ -558,27 +825,27 @@ paths:
       operationId: executeSparqlGet
       tags:
         - SPARQL
-      security:
-        - BasicAuth: []
-        - SessionAuth: []
       parameters:
         - name: query
           in: query
           required: true
           description: |
             SPARQL query string. Must be URL-encoded.
-            Example query used for this response:  
-            `SELECT * WHERE { ?s ?p ?o } LIMIT 1`
           schema:
             type: string
+          example: "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
       responses:
         '200':
           description: Successful SPARQL query execution
           content:
             application/json:
+              schema:
+                type: object
+                description: SPARQL 1.1 Query Results JSON Format.
+                additionalProperties: true
               example:
                 head:
-                  vars: [ "s", "p", "o" ]
+                  vars: ["s", "p", "o"]
                 results:
                   bindings:
                     - s:
@@ -590,6 +857,12 @@ paths:
                       o:
                         type: "uri"
                         value: "http://example.org/TypeClass"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
 
     post:
       summary: Execute SPARQL query (POST)
@@ -599,11 +872,9 @@ paths:
       operationId: executeSparqlPost
       tags:
         - SPARQL
-      security:
-        - BasicAuth: []
-        - SessionAuth: []
       requestBody:
         required: true
+        description: Form-encoded SPARQL query.
         content:
           application/x-www-form-urlencoded:
             schema:
@@ -614,12 +885,16 @@ paths:
                 query:
                   type: string
                   description: SPARQL query string.
-                  example: SELECT * WHERE { ?s ?p ?o } LIMIT 1
+                  example: "SELECT * WHERE { ?s ?p ?o } LIMIT 1"
       responses:
         '200':
           description: Successful SPARQL query execution
           content:
             application/json:
+              schema:
+                type: object
+                description: SPARQL 1.1 Query Results JSON Format.
+                additionalProperties: true
               example:
                 head:
                   vars: ["s", "p", "o"]
@@ -628,7 +903,9 @@ paths:
                     - s: { type: "uri", value: "http://example.org/resource-1" }
                       p: { type: "uri", value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" }
                       o: { type: "uri", value: "http://example.org/TypeClass" }
-
-security:
-  - BasicAuth: []
-  - SessionAuth: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'

@@ -1,65 +1,81 @@
 # Knowledge Graph API — OpenAPI specification
 
-A **sanitized** OpenAPI 3.0 specification for a backend knowledge-graph service, plus a
-ready-to-serve Swagger UI page for browsing it.
+**[→ Browse the reference](https://asadhky.github.io/BackendAPIDoc/)**
+
+A complete OpenAPI 3.0 specification for a knowledge-graph backend, written as a
+demonstration of API design and documentation practice. **There is no live server behind
+it** — this is a sample, and every identifier is an `example.org` placeholder.
 
 The service it describes stores RDF graphs in a triple store, indexes them in Solr, and
-answers natural-language questions over them using Retrieval Augmented Generation. The API
-covers seven areas: graph administration, configuration, individual RDF resources, file
-uploads, RAG answer and card endpoints, a Solr proxy, and a SPARQL query proxy.
+answers natural-language questions over them using Retrieval Augmented Generation.
+17 operations across 13 paths, in seven areas:
 
-All hostnames, identifiers and payloads have been replaced with `example.org` placeholders.
-No internal servers, credentials or data are exposed.
+| Area | What it covers |
+|---|---|
+| Administration | Bulk load and delete named graphs, fetch SHACL profiles |
+| Configuration | Read the service's effective Solr configuration |
+| Resources | Create, read and delete individual RDF resources (Turtle) |
+| File Management | Upload `.ttl` files and list what has been uploaded |
+| AI | RAG answers, a server-sent-event streaming variant, and summary cards |
+| Solr | Pass-through proxy to the Solr API |
+| SPARQL | Pass-through proxy for SPARQL queries, GET and POST |
 
-## Browsing the docs
+## Viewing it
 
-The repository ships a Swagger UI page (`index.html`) that loads `openapi.yaml` directly.
+Two rendered views are published from this repository:
 
-**Hosted:** enable GitHub Pages for this repository (Settings → Pages → deploy from `main`,
-root) and the reference is served at `https://asadhky.github.io/BackendAPIDoc/`.
+- **[Reference view](https://asadhky.github.io/BackendAPIDoc/)** (`index.html`) — Redoc.
+  Three-panel layout, built for reading end to end.
+- **[Swagger UI view](https://asadhky.github.io/BackendAPIDoc/swagger-ui.html)**
+  (`swagger-ui.html`) — the familiar expand-and-explore layout. "Try it out" is disabled,
+  since there is nothing to call.
 
-**Locally**, any static file server works — Swagger UI cannot read `openapi.yaml` over
-`file://`:
+To serve them locally — Redoc and Swagger UI both fetch `openapi.yaml` over HTTP and
+cannot read it from `file://`:
 
 ```bash
 python3 -m http.server 8080
 # then open http://localhost:8080
 ```
 
-**Or use your own tooling** — the spec is a plain OpenAPI 3.0 document, so
-[Redoc](https://github.com/Redocly/redoc), Postman, Insomnia and OpenAPI generators all
-read it as-is.
+The spec is a plain OpenAPI 3.0 document, so Postman, Insomnia, Stoplight and OpenAPI
+generators all read `openapi.yaml` directly.
 
 ## Validating
 
-The spec is checked by [Redocly CLI](https://redocly.com/docs/cli/) on every push via
-`.github/workflows/lint.yml`. To run the same check locally:
+[Redocly CLI](https://redocly.com/docs/cli/) runs on every push and pull request via
+`.github/workflows/lint.yml`:
 
 ```bash
 npx @redocly/cli lint openapi.yaml
 ```
 
-Two warnings are expected and intentional: `info-license` (see below) and
-`no-server-example.com`, which flags the `localhost` development server.
+The spec validates with no errors. One warning remains — `no-server-example.com`, which
+flags the `localhost` development server and is expected here.
 
-## Authentication
+## Design notes
 
-Two schemes are declared, and the spec applies both globally — every operation requires one
-of them:
+A few choices worth calling out, since the point of the repo is the documentation itself:
 
-- `BasicAuth` — HTTP Basic.
-- `SessionAuth` — a session identifier established when a session is created.
+- **Errors are first-class.** A shared `Error` schema is referenced from reusable
+  `400`/`401`/`404`/`500` responses in `components.responses`, so every operation documents
+  its failure modes rather than just the happy path.
+- **Responses are named schemas**, not inline objects, so the spec generates usable client
+  models.
+- **Both auth schemes are declared and applied globally** — `BasicAuth` (HTTP Basic) and
+  `SessionAuth` (a session cookie established when a session is created).
+- **The streaming endpoint is documented as `text/event-stream`** with its event sequence
+  spelled out, rather than being described as JSON.
 
 ## Layout
 
 ```
-openapi.yaml   the specification: 17 operations across 13 paths
-index.html     Swagger UI, loading ./openapi.yaml
-.github/       CI workflow that lints the spec
+openapi.yaml      the specification
+index.html        Redoc reference view
+swagger-ui.html   Swagger UI view, submit disabled
+.github/          CI workflow linting the spec
 ```
 
 ## Licence
 
-No licence is attached. This spec documents a service the author did not solely author, so
-reuse terms are not the author's alone to grant — treat it as read-only reference material
-unless you have been told otherwise.
+MIT — see [LICENSE](LICENSE).

@@ -2,41 +2,52 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <title>Knowledge Graph API Documentation</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
-    <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@5/favicon-32x32.png" sizes="32x32" />
-    <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@5/favicon-16x16.png" sizes="16x16" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Knowledge Graph API — Reference</title>
+    <meta name="description" content="Sanitized OpenAPI 3.0 reference for a knowledge-graph backend: RDF storage, Solr indexing, SPARQL and RAG endpoints.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-      html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
-      *, *:before, *:after { box-sizing: inherit; }
-      body { margin:0; background: #fafafa; }
+      body { margin: 0; padding: 0; }
+      .banner {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        padding: 10px 20px;
+        background: #f3f4f6;
+        border-bottom: 1px solid #e5e7eb;
+        color: #374151;
+      }
+      .banner strong { color: #111827; }
+      .banner a { color: #2563eb; }
     </style>
   </head>
-
   <body>
-    <div id="swagger-ui"></div>
-
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" charset="UTF-8"> </script>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" charset="UTF-8"> </script>
+    <div class="banner">
+      <strong>Sample specification.</strong>
+      This documents a knowledge-graph backend as a portfolio piece — there is no live
+      server behind it, and all identifiers are <code>example.org</code> placeholders.
+      <a href="https://github.com/asadhky/BackendAPIDoc">Source on GitHub</a> ·
+      <a href="./openapi.yaml">openapi.yaml</a> ·
+      <a href="./swagger-ui.html">Swagger UI view</a>
+    </div>
+    <div id="redoc"></div>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js"></script>
     <script>
-    window.onload = function() {
-      // Begin Swagger UI call region
-      const ui = SwaggerUIBundle({
-        url: "./openapi.yaml", 
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIStandalonePreset
-        ],
-        plugins: [
-          SwaggerUIBundle.plugins.DownloadUrl
-        ],
-        layout: "StandaloneLayout"
-      });
-      // End Swagger UI call region
-      window.ui = ui;
-    };
-  </script>
+      Redoc.init('./openapi.yaml', {
+        hideDownloadButton: false,
+        expandResponses: '200',
+        jsonSampleExpandLevel: 3,
+        theme: {
+          typography: {
+            fontFamily: 'Inter, system-ui, sans-serif',
+            headings: { fontFamily: 'Inter, system-ui, sans-serif', fontWeight: '600' },
+            code: { fontFamily: '"JetBrains Mono", ui-monospace, monospace' }
+          },
+          sidebar: { width: '280px' }
+        }
+      }, document.getElementById('redoc'));
+    </script>
   </body>
 </html>

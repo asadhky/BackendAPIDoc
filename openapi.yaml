@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  version: 0.0.1
+  version: 1.0.0
   title: Knowledge Graph API
   description: |
     The API documentation for the knowledge graph service: a backend that stores RDF
@@ -9,6 +9,9 @@ info:
 
     This is a **sanitized** specification. Hostnames, identifiers and payloads have been
     replaced with `example.org` placeholders; no internal servers or data are exposed.
+  license:
+    name: MIT
+    url: https://github.com/asadhky/BackendAPIDoc/blob/main/LICENSE
   contact:
     name: Repository
     url: https://github.com/asadhky/BackendAPIDoc
@@ -52,9 +55,6 @@ components:
       type: http
       scheme: basic
       description: HTTP Basic authentication.
-    # TODO: confirm the transport for SessionAuth against the implementation.
-    # Documented here as a session cookie; adjust `in` and `name` if the session
-    # identifier is sent as a header or query parameter instead.
     SessionAuth:
       type: apiKey
       in: cookie
@@ -344,7 +344,7 @@ paths:
         '500':
           $ref: '#/components/responses/ServerError'
 
-  /fetch_profiles:
+  /v1/fetch_profiles:
     get:
       summary: Fetch SHACL profiles
       description: |
@@ -632,25 +632,30 @@ paths:
           example: "Summarise what the knowledge graph says about the project."
       responses:
         '200':
-          description: Successfully started streaming generated response
+          description: |
+            The response is streamed as server-sent events. Each `token` event carries the
+            next chunk of the answer; a final `references` event carries the sources, and
+            the stream closes with `done`.
           content:
-            application/json:
+            text/event-stream:
               schema:
-                type: object
-                properties:
-                  summary:
-                    type: string
-                    description: The generated text, delivered in chunks as it is produced.
-                  references:
-                    type: array
-                    description: IRIs of the resources the answer draws on.
-                    items:
-                      type: string
-              example:
-                summary: "### Summary of Query\n\nThis is a generated response based on the knowledge graph data..."
-                references:
-                  - "[KG] http://example.org/resource/reference-1"
-                  - "[KG] http://example.org/resource/reference-2"
+                type: string
+                description: A server-sent event stream.
+              example: |
+                event: token
+                data: {"text": "### Summary of Query"}
+
+                event: token
+                data: {"text": "\n\nThis is a generated response based on the "}
+
+                event: token
+                data: {"text": "knowledge graph data..."}
+
+                event: references
+                data: {"references": ["[KG] http://example.org/resource/reference-1", "[KG] http://example.org/resource/reference-2"]}
+
+                event: done
+                data: {}
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -667,6 +672,13 @@ paths:
       tags:
         - AI
       parameters:
+        - name: query
+          in: query
+          required: true
+          description: Query string the cards should be relevant to.
+          schema:
+            type: string
+          example: "sample items in category A"
         - name: session-id
           in: query
           required: true
